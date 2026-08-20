@@ -5,8 +5,11 @@ how to use it.
 
 ```
 grok plugin marketplace add memvara/grok-memvara
-grok plugin install memvara --trust
+grok plugin install memvara@memvara/grok-memvara --trust
 ```
+
+Pin the install to this marketplace. The plugin name `memvara` is also used by
+`memvara/claude-memvara`; without the qualifier Grok refuses to guess.
 
 The first connection opens a browser so you can click Allow. That grant
 lasts 90 days. There is no local Python process and we do not use an

@@ -35,6 +35,15 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Required Grok marketplace files
+        run: |
+          set -euo pipefail
+          test -f .grok-plugin/marketplace.json
+          test -f plugin/plugin.json
+          test -f plugin/.mcp.json
+          test -f plugin.json
+          test -f .mcp.json
+
       - name: Test
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}

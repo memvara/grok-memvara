@@ -97,6 +97,16 @@ class GrokManifest(unittest.TestCase):
     def test_marketplace(self) -> None:
         body = _json(ROOT / ".grok-plugin" / "marketplace.json")
         self.assertEqual(body["plugins"][0]["source"], "./plugin")
+        self.assertEqual(body["metadata"]["version"], "0.1.0")
+
+    def test_root_manifest_so_grok_validate_dot_works(self) -> None:
+        body = _json(ROOT / "plugin.json")
+        self.assertEqual(body["name"], "memvara")
+        self.assertEqual(body["skills"], ["./plugin/skills/"])
+        self.assertEqual(
+            _json(ROOT / ".mcp.json")["mcpServers"]["memvara"]["url"],
+            HOSTED,
+        )
 
     def test_mcp(self) -> None:
         server = _json(PLUGIN / ".mcp.json")["mcpServers"]["memvara"]
@@ -107,7 +117,7 @@ class GrokManifest(unittest.TestCase):
     def test_readme(self) -> None:
         text = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn("grok plugin marketplace add memvara/grok-memvara", text)
-        self.assertIn("grok plugin install memvara --trust", text)
+        self.assertIn("grok plugin install memvara@memvara/grok-memvara --trust", text)
         self.assertIn(HOSTED, text)
         self.assertNotIn("npx ", text)
         self.assertNotIn("chatgpt", text.lower())
