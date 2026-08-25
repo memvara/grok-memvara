@@ -75,7 +75,23 @@ class License(unittest.TestCase):
 
 class Hygiene(unittest.TestCase):
     def test_no_npx_in_json(self) -> None:
+        """No JSON *this repo ships* may reach for npx.
+
+        `_library` is skipped because it is not ours: CI checks the library out there, at
+        `skill.lock`'s sha, so the drift test can run offline. The moment that lock moves
+        to a sha where the library has an npm package, an unfiltered scan reads
+        `_library/npm/memvara/package.json` -- whose description legitimately begins "npx
+        memvara" -- and fails a sync PR for a string in another repository. That is not
+        hypothetical: it happened in claude-memvara on 2026-08-25, and this lock bump is
+        the one that would have done it here.
+
+        The scan stays repo-wide rather than narrowing to `plugin/`: the rule is about
+        anything shipped from here, and an allowlist of directories stops covering the
+        next one added.
+        """
         for path in ROOT.rglob("*.json"):
+            if {"node_modules", "_library"} & set(path.parts):
+                continue
             self.assertNotIn("npx", path.read_text(encoding="utf-8"), path)
 
     def test_no_hooks(self) -> None:
