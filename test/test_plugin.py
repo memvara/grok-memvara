@@ -10,8 +10,10 @@ import json
 import os
 import pathlib
 import re
+import ssl
 import subprocess
 import unittest
+import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PLUGIN = ROOT / "plugin"
@@ -24,16 +26,99 @@ def _json(path: pathlib.Path) -> object:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+class LibraryUnreachable(Exception):
+    """Neither a local checkout nor GitHub could answer. Raised, never swallowed.
+
+    A drift check that quietly passes when it cannot look is the same as no drift check.
+    This repository has already been caught by exactly that shape: `skill-sync.yml` failed
+    on every scheduled run for days while nothing here went red, because the vendored copy
+    and `skill.lock` stayed consistent with each other and the only thing that would have
+    noticed was a scheduled job nobody read.
+    """
+
+
+def _trust() -> "ssl.SSLContext":
+    """A context that trusts the same roots `curl` does.
+
+    python.org's macOS build ignores the system trust store, so an unqualified `urlopen`
+    raises CERTIFICATE_VERIFY_FAILED against a certificate `curl` accepts. Without this the
+    drift check below does not fail on a Mac -- it *skips*, reporting the library as
+    unreachable when the library is fine, which is the quiet half of the failure it was
+    written to catch.
+    """
+    try:
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
+
+def _fetch(url: str) -> bytes:
+    request = urllib.request.Request(url, headers={"User-Agent": "memvara-tests"})
+    with urllib.request.urlopen(request, timeout=30, context=_trust()) as resp:
+        return bytes(resp.read())
+
+
 def _library_bytes(sha: str, path: str) -> bytes:
     root = os.environ.get("MEMVARA_LIBRARY")
     if root:
-        return subprocess.check_output(
-            ["git", "-C", root, "show", f"{sha}:{path}"],
-        )
-    import urllib.request
-    url = f"https://raw.githubusercontent.com/memvara/memvara/{sha}/{path}"
-    with urllib.request.urlopen(url, timeout=30) as resp:
-        return resp.read()
+        try:
+            return subprocess.check_output(
+                ["git", "-C", root, "show", f"{sha}:{path}"],
+                stderr=subprocess.DEVNULL)
+        except subprocess.CalledProcessError:
+            # The checkout has the sha `skill.lock` names and nothing else: CI clones the
+            # library AT that sha, shallow, so the library's current HEAD is simply not an
+            # object here. Falling back to the network rather than failing is what lets the
+            # drift check below run on CI at all -- and it only matters when the lock is
+            # stale, which is precisely when the check has something to say.
+            pass
+    return _fetch(f"https://raw.githubusercontent.com/memvara/memvara/{sha}/{path}")
+
+
+def _library_head() -> str:
+    """The library default branch's current sha, or raise `LibraryUnreachable`."""
+    root = os.environ.get("MEMVARA_LIBRARY")
+    if root:
+        for ref in ("origin/main", "main"):
+            try:
+                return subprocess.check_output(
+                    ["git", "-C", root, "rev-parse", ref],
+                    stderr=subprocess.DEVNULL).decode().strip()
+            except subprocess.CalledProcessError:
+                continue
+    try:
+        body = _fetch("https://api.github.com/repos/memvara/memvara/commits/main")
+        return str(json.loads(body)["sha"])
+    except Exception as exc:
+        raise LibraryUnreachable(str(exc)) from exc
+
+
+def _library_skill_files(sha: str) -> "set[str]":
+    """Every path under the packaged skill at `sha`, relative to it."""
+    root = os.environ.get("MEMVARA_LIBRARY")
+    prefix = "memvara/skills/memvara/"
+    if root:
+        try:
+            out = subprocess.check_output(
+                ["git", "-C", root, "ls-tree", "-r", "--name-only", sha,
+                 "memvara/skills/memvara"], stderr=subprocess.DEVNULL).decode()
+        except subprocess.CalledProcessError:
+            # Not an object in this checkout -- see `_library_bytes`. Ask GitHub instead
+            # of reporting the library unreachable, which would SKIP the check on the one
+            # run that needed it.
+            out = None
+        if out is not None:
+            return {line[len(prefix):] for line in out.splitlines()
+                    if line.startswith(prefix)}
+    try:
+        tree = json.loads(_fetch(
+            f"https://api.github.com/repos/memvara/memvara/git/trees/{sha}?recursive=1"))
+    except Exception as exc:
+        raise LibraryUnreachable(str(exc)) from exc
+    return {entry["path"][len(prefix):] for entry in tree.get("tree", [])
+            if entry.get("type") == "blob" and entry["path"].startswith(prefix)}
 
 
 def _lock() -> dict[str, str]:
@@ -64,6 +149,51 @@ class SkillTree(unittest.TestCase):
         for rel in ("SKILL.md", "references/hosted-mcp.md"):
             expected = _library_bytes(sha, f"memvara/skills/memvara/{rel}")
             self.assertEqual((SKILL / rel).read_bytes(), expected, rel)
+
+    def test_the_vendored_skill_is_not_behind_the_library(self) -> None:
+        """The whole tree, against the library's CURRENT default branch.
+
+        `test_matches_library_at_lock_sha` cannot catch a stale sync and is not supposed
+        to: it compares the copy against the sha the copy itself names, so a lock and a
+        tree frozen together agree with each other forever. That is exactly how this repo
+        shipped a skill five commits behind -- `skill-sync.yml` dying every night on a
+        permission the organization pins, nothing here going red, and the agreement
+        between the two stale files being the thing that hid it.
+
+        Two deliberate choices about noise. It compares BYTES rather than shas, so the
+        library moving does not fail this repository -- only the library's *skill* moving
+        does, which is rare. And it compares the file SET as well, because a new reference
+        file upstream is drift that a per-file comparison of the files we already have
+        would never see.
+
+        When the library cannot be reached this SKIPS rather than passes. A skip is
+        visible in the run output; a pass is not, and a check that silently succeeds when
+        it could not look is the failure it exists to prevent, one level up.
+        """
+        try:
+            head = _library_head()
+            upstream = _library_skill_files(head)
+        except LibraryUnreachable as exc:
+            raise unittest.SkipTest(
+                f"library unreachable, drift NOT checked: {exc}") from exc
+
+        self.assertTrue(upstream, "the library reported an empty skill tree")
+        ours = {str(path.relative_to(SKILL))
+                for path in SKILL.rglob("*") if path.is_file()}
+        self.assertEqual(
+            ours, upstream,
+            f"the vendored skill's file set differs from the library at {head[:7]} — "
+            "run scripts/sync_plugin_repos.py from the library and update skill.lock")
+
+        drifted = []
+        for rel in sorted(upstream):
+            expected = _library_bytes(head, f"memvara/skills/memvara/{rel}")
+            if (SKILL / rel).read_bytes() != expected:
+                drifted.append(rel)
+        self.assertEqual(
+            drifted, [],
+            f"vendored skill is behind memvara/memvara@{head[:7]}: {drifted} — "
+            "sync it")
 
 
 class License(unittest.TestCase):
