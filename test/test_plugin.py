@@ -305,7 +305,7 @@ class GrokManifest(unittest.TestCase):
     def test_marketplace(self) -> None:
         body = _json(ROOT / ".grok-plugin" / "marketplace.json")
         self.assertEqual(body["plugins"][0]["source"], "./plugin")
-        self.assertEqual(body["metadata"]["version"], "0.1.0")
+        self.assertEqual(body["metadata"]["version"], "0.2.0")
 
     def test_root_manifest_so_grok_validate_dot_works(self) -> None:
         body = _json(ROOT / "plugin.json")
@@ -340,6 +340,115 @@ class GrokManifest(unittest.TestCase):
                 allowed.add(path.relative_to(PLUGIN))
         found = {p.relative_to(PLUGIN) for p in PLUGIN.rglob("*") if p.is_file()}
         self.assertFalse(found - allowed, found - allowed)
+
+
+class Version(unittest.TestCase):
+    """Every version this repository states must be the same one, and none may hide.
+
+    Five skill syncs shipped under 0.1.0. The vendored skill is the whole of what a client
+    receives here, it changed five times, and the string a client compares never moved.
+    `claude-memvara` was caught by the identical shape at larger scale -- twenty-one
+    commits on main behind an unchanged version, `/plugin update` answering "already at
+    the latest version" for every one of them.
+
+    Three deliberate choices, each of them paid for by a sabotage run.
+
+    Files are found by walking the tree, not by reading a list, so a manifest nobody
+    remembered cannot go unchecked. `DECLARED` is then the completeness half -- it names
+    the manifests that MUST carry a version, and it is compared against the walk in both
+    directions, which is what keeps a hand-written list from quietly narrowing coverage.
+
+    The file set comes from `git ls-files`, not from the filesystem. Two sweeps of the
+    tree were tried first and both were wrong in a way a passing run could not show: one
+    ignored directories by absolute path, which excluded the entire repository whenever the
+    checkout was a worktree (those live under `.claude/worktrees/`, so `.claude` was in the
+    parts of every path); the next was caught by CI dragging in six manifests from the
+    library checkout under `_library/`. Git already knows which files this repository owns.
+
+    And the assertions demand presence rather than absence of the wrong value. The
+    coverage check was first written as a bare set comparison and passed on that broken
+    walk because both sides were empty; the value check alone still passes when one
+    manifest of several drops its version entirely. A guard an absence satisfies has
+    stopped guarding.
+    """
+
+    VERSION = "0.2.0"
+    DECLARED = {
+        '.grok-plugin/marketplace.json',
+        'plugin.json',
+        'plugin/plugin.json',
+    }
+
+    @classmethod
+    def _walk(cls, node: object, where: str = ""):
+        """Every `version` string at any depth, with the pointer that reached it."""
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == "version" and isinstance(value, str):
+                    yield f"{where}.{key}", value
+                else:
+                    yield from cls._walk(value, f"{where}.{key}")
+        elif isinstance(node, list):
+            for index, value in enumerate(node):
+                yield from cls._walk(value, f"{where}[{index}]")
+
+    @classmethod
+    def _candidates(cls) -> list:
+        """Every JSON file this repository TRACKS -- asked of git, not of the filesystem.
+
+        The filesystem is the wrong referent. CI checks the library out into `_library/`,
+        which carries the sibling plugins' own manifests, and an `rglob` swept all six into
+        the walk; a denylist would then have to grow a name for every scratch directory
+        anyone ever creates, and the first one nobody thought of is a false failure. What
+        the question actually means is "files this repository owns", and git is the thing
+        that knows. Untracked checkouts and nested worktrees fall out for free.
+
+        No fallback when git cannot answer. A fallback here would silently cover less than
+        the caller believes, which is the failure this whole class exists to prevent.
+        """
+        listed = subprocess.run(
+            ["git", "-C", str(ROOT), "ls-files", "-z", "*.json"],
+            check=True, capture_output=True, text=True).stdout
+        return [
+            ROOT / name for name in listed.split("\0")
+            if name and pathlib.PurePath(name).name != "package-lock.json"
+        ]
+
+    def _stated(self) -> list:
+        found = []
+        for path in self._candidates():
+            try:
+                body = json.loads(path.read_text(encoding="utf-8"))
+            except ValueError:
+                continue
+            found.extend((path, where, value) for where, value in self._walk(body))
+        return found
+
+    def test_every_version_this_repo_states_is_the_released_one(self) -> None:
+        stated = self._stated()
+        self.assertTrue(
+            stated, "no file states a version at all -- this guard has stopped guarding")
+        for path, where, value in stated:
+            self.assertEqual(
+                value, self.VERSION,
+                f"{path.relative_to(ROOT)}{where} says {value!r}; a partial bump is how a "
+                "client gets told it is current while the contents moved underneath it")
+
+    def test_exactly_the_manifests_that_must_declare_a_version_do(self) -> None:
+        """Both directions, because each catches a mistake the other cannot see.
+
+        A file the walk misses is a version nobody checks. A file that has stopped
+        declaring one is a manifest shipping unversioned -- invisible to the value check
+        above, which goes green as soon as any other file still says the right thing.
+        Confirmed by sabotage: deleting the key from one of three manifests left it green.
+        """
+        reached = {str(path.relative_to(ROOT)) for path, _where, _value in self._stated()}
+        by_text = {
+            str(path.relative_to(ROOT)) for path in self._candidates()
+            if '"version"' in path.read_text(encoding="utf-8")
+        }
+        self.assertEqual(by_text, self.DECLARED, "a manifest gained or lost its version")
+        self.assertEqual(reached, self.DECLARED, "the JSON walk missed a stated version")
 
 
 if __name__ == "__main__":
