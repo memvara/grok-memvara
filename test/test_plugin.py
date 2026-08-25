@@ -203,6 +203,68 @@ class License(unittest.TestCase):
         self.assertIn("Version 2.0", text)
 
 
+class SharedInstructions(unittest.TestCase):
+    """CLAUDE.md is shared across every plugin repo, and nothing used to carry it.
+
+    It was hand-copied and it drifted: eleven of fourteen sections were byte-identical
+    across all seven repositories while a section written in one of them reached none of
+    the others. The canonical is `plugin-claude.md` in the library; `skill-sync.yml`
+    composes this file from it and preserves the `local:` block, because two sections
+    legitimately differ per repo — a repository's own runtime facts, and hook rules that
+    only one plugin needs.
+
+    Without this guard the sync would be a tidier way to drift rather than an end to it,
+    which is the objection the section it carries makes about hand-maintained copies.
+    """
+
+    BEGIN = "<!-- local: begin"
+    END = "<!-- local: end -->"
+
+    def _text(self) -> str:
+        return (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+
+    def test_the_local_block_is_delimited_exactly_once(self) -> None:
+        """Two of either marker and the splice takes the wrong span; none and the composer
+        refuses rather than replacing this repository's sections with a placeholder.
+        """
+        text = self._text()
+        self.assertEqual(text.count(self.BEGIN), 1)
+        self.assertEqual(text.count(self.END), 1)
+        self.assertLess(text.index(self.BEGIN), text.index(self.END))
+
+    def test_the_shared_half_matches_the_library(self) -> None:
+        """Compared against the LIBRARY, never against this file's own halves.
+
+        A check that read both halves of one file would prove it internally consistent and
+        nothing else — exactly how a vendored skill sat five commits behind while its own
+        drift test passed.
+        """
+        lock = _lock()
+        try:
+            canonical = _library_bytes(lock["sha"], "plugin-claude.md").decode("utf-8")
+        except Exception as exc:  # noqa: BLE001
+            raise unittest.SkipTest(
+                f"library has no plugin-claude.md at {lock['sha'][:7]}: {exc}") from exc
+        text = self._text()
+        head, rest = text.split(self.BEGIN, 1)
+        _, tail = rest.split(self.END, 1)
+        want_head, want_tail = canonical.split("@@LOCAL@@\n", 1)
+        self.assertEqual(head, want_head,
+                         "text above the local block drifted — edit plugin-claude.md in "
+                         "memvara/memvara, not the copy here")
+        self.assertEqual(tail.lstrip("\n"), want_tail.lstrip("\n"),
+                         "text below the local block drifted from plugin-claude.md")
+
+    def test_the_local_block_holds_what_only_this_repo_knows(self) -> None:
+        """Not decorative: it carries the two sections that differ per repo. A sync that
+        flattened it would lose them silently — the file would still read as a complete
+        CLAUDE.md, just one belonging to a different repository.
+        """
+        local = self._text().split(self.BEGIN, 1)[1].split(self.END, 1)[0]
+        self.assertIn("Runtime facts that cost hours to find", local)
+        self.assertIn("If this repo ships hooks", local)
+
+
 class Hygiene(unittest.TestCase):
     def test_no_npx_in_json(self) -> None:
         """No JSON *this repo ships* may reach for npx.
