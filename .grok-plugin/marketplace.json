@@ -6,7 +6,7 @@
     "url": "https://memvara.dev"
   },
   "metadata": {
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "plugins": [
     {
@@ -15,7 +15,7 @@
       "description": "Hosted MCP plus the skill for using it.",
       "homepage": "https://memvara.dev/docs/agents",
       "license": "Apache-2.0",
-      "version": "0.1.0"
+      "version": "0.2.0"
     }
   ]
 }
