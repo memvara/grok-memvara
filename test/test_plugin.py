@@ -305,7 +305,7 @@ class GrokManifest(unittest.TestCase):
     def test_marketplace(self) -> None:
         body = _json(ROOT / ".grok-plugin" / "marketplace.json")
         self.assertEqual(body["plugins"][0]["source"], "./plugin")
-        self.assertEqual(body["metadata"]["version"], "0.2.0")
+        self.assertEqual(body["metadata"]["version"], Version.VERSION)
 
     def test_root_manifest_so_grok_validate_dot_works(self) -> None:
         body = _json(ROOT / "plugin.json")
@@ -372,7 +372,7 @@ class Version(unittest.TestCase):
     stopped guarding.
     """
 
-    VERSION = "0.2.0"
+    VERSION = "0.2.1"
     DECLARED = {
         '.grok-plugin/marketplace.json',
         'plugin.json',
@@ -449,6 +449,24 @@ class Version(unittest.TestCase):
         }
         self.assertEqual(by_text, self.DECLARED, "a manifest gained or lost its version")
         self.assertEqual(reached, self.DECLARED, "the JSON walk missed a stated version")
+
+    def test_the_release_number_is_written_down_exactly_once_in_this_suite(self) -> None:
+        """`VERSION` above is the only place the tests name it.
+
+        Ported from claude-memvara, which learned it the same way this repository just
+        did: another test asserted the release literally, so a bump had to be applied in
+        two places and one of them was missed. Every extra place is the mechanism a
+        partial bump needs, and a partial bump is what tells a client it is current while
+        the contents moved underneath it.
+
+        The duplicates that prompted this now read `Version.VERSION` instead, which is
+        why they no longer count.
+        """
+        source = pathlib.Path(__file__).read_text(encoding="utf-8")
+        self.assertEqual(
+            source.count(f'"{self.VERSION}"'), 1,
+            f"{self.VERSION} appears more than once in this file; VERSION is meant to be "
+            "the single place the suite states the release")
 
 
 if __name__ == "__main__":
