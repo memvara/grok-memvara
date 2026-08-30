@@ -20,8 +20,15 @@ Read `references/integrate.md` before you write code or config.
 
 - **Editor / coding agent** (Claude Code, Grok, Cursor, Copilot): install the
   plugin, or paste the hosted MCP URL. Details in `references/hosted-mcp.md`.
-- **A loop you are writing in Python**: `pip install memvara`, then
-  `from memvara import Memvara`. The plugin does not install into LangChain.
+- **A loop you are writing in Python, against your own store**: `pip install
+  memvara`, then `from memvara import Memvara` and `Memvara(path)`. The
+  plugin does not install into LangChain.
+- **A loop you are writing in Python, against a hosted deployment**:
+  `Memvara(api_key=...)`, or `Memvara.connect()` for whatever
+  `memvara-mcp login` already wrote to `~/.memvara/credentials.json`. Same
+  class, same calls; the engine runs server-side. `consolidate()` returns a
+  job to poll instead of counts, and there is no `prove_erased()` — the
+  erasure response already carries the proof.
 - **A loop in any other language**: hosted MCP as a client, or the commercial
   REST API. The npm package named `memvara` is a name reservation and does
   nothing.
@@ -45,10 +52,41 @@ wording. A value that was accurate then and is different now is
 A value that was right and has stopped is `memory_end`. Full sequence:
 `references/write-and-correct.md`.
 
+**A note your own work just disproved is yours to close.** The paragraph above is
+for when *they* raise it. More often nobody does: a note comes back in recall and
+the work you do this turn is what makes it false. Nothing else notices — the
+person cannot see the store, and the next session reads the same note and
+believes it.
+
+Close it in the turn that falsified it. The bar is evidence, not suspicion:
+something you did or read this turn, not a note that merely looks old. Recall
+does not carry claim ids, so you pay one `memory_search` for the handle, then
+choose the same three ways — a value overtaken is `memory_remember`, one that
+has stopped being true is `memory_end` at the instant it stopped, one that was
+never right is `memory_forget`.
+
+Check the claim against the thing it describes, not against another note in the
+store. Two records agreeing with each other is what let the stale one stand this
+long, and a stored sentence saying a defect is fixed is not the fix.
+
+Then say what you closed, in the same message as the work. A correction nobody
+is told about is one they cannot argue with.
+
 Call `memory_stats` once before you write. If the session field is not `*`, the
 server was launched with `MEMVARA_SESSION` set and the note will not carry over
-— say so. If stats say `fast-path-only`, write triples with `memory_remember`;
-prose handed to `memory_add` is often accepted and not stored.
+— say so. If stats say `fast-path-only`, write triples with `memory_remember`: a
+paragraph nothing recognises yields no fact. Do not read that as the tool being
+harmless. What it does recognise it writes, and the deciding argument is `role`.
+
+So work out whose voice you are storing before you store it. What you hand over is
+rarely one: their sentence, and under it a file, an error, a page they dropped in.
+A call carries a single role, so a turn holding both voices takes two — theirs as
+they wrote it, the pasted part by itself. Nothing downstream can see which half
+they typed, which is why this one is yours.
+
+Getting it wrong writes a note that was never true of them, so `memory_forget`
+takes it back and `memory_end` does not. You do not have to go looking: the
+receipt names every claim the call just created, and reading it is the check.
 
 Store what would be **embarrassing** to get wrong next week. Do not restate the
 transcript. See `references/scopes.md`.
