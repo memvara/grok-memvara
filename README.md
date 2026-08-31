@@ -40,7 +40,7 @@ The qualified spelling is the one to type. Grok's own `/login` and `/logout` kee
 those bare names, so a plugin command of the same name is only reachable as
 `/memvara:login` and `/memvara:logout`.
 
-Typing one of them runs `python3` here, against `auth/memvara_auth.py` in the plugin.
+Typing one of them runs `python3` here, against `skills/memvara/scripts/memvara_auth.py` — inside the skill, which is where the library vendors it so every host gets the same copy.
 Standard library only, no `pip install`, and nothing left running when the command
 returns.
 
