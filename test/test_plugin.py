@@ -1569,6 +1569,35 @@ class Commands(unittest.TestCase):
         os.chmod(path, 0o600)
         return path
 
+    def test_the_manifest_declares_command_directories_not_command_files(self) -> None:
+        """Grok's `commands` field names directories to scan, not files to load.
+
+        Declaring the four `.md` paths installed cleanly and reported "4 command dir(s)" --
+        it counted the entries, and each one happened to be a file it then found nothing
+        inside. `grok plugin details` said four, `grok inspect` listed no commands at all,
+        and typing `/memvara:stats` reached the MCP tool instead of the script, which
+        answers the same question well enough that nothing looked wrong.
+
+        So this asserts the shape the host actually scans: every entry resolves to a
+        directory that exists and holds at least one `.md`. A file passes the
+        "points at something that exists" test above and still ships four commands
+        nobody can invoke.
+        """
+        for manifest in (ROOT / "plugin.json", PLUGIN / "plugin.json"):
+            declared = json.loads(manifest.read_text(encoding="utf-8")).get("commands")
+            self.assertTrue(declared, f"{manifest.name} declares no commands")
+            for entry in declared:
+                where = (manifest.parent / entry).resolve()
+                with self.subTest(manifest=manifest.name, entry=entry):
+                    self.assertTrue(
+                        where.is_dir(),
+                        f"{manifest.name} declares {entry!r}, which is not a directory. "
+                        "Grok scans these paths for command files; naming a file installs "
+                        "cleanly and registers nothing.")
+                    self.assertTrue(
+                        list(where.glob("*.md")),
+                        f"{entry!r} is a directory with no command files in it")
+
     def test_every_command_this_plugin_declares_points_at_a_file_that_exists(self) -> None:
         """Non-empty as well as resolvable, and checked in both directions.
 
@@ -1592,15 +1621,24 @@ class Commands(unittest.TestCase):
             "and one this repository does not otherwise rely on")
         self.assertTrue(declared, "a plugin that declares no commands ships no commands")
 
+        # Directories, not files. This assertion used to require a file, which is what
+        # let four `.md` paths ship: `grok plugin install` accepted them and reported
+        # "4 command dir(s)" -- it counted the entries and scanned each as a directory,
+        # finding nothing in any of them. Every command was unreachable, and the only
+        # symptom was `/memvara:stats` quietly reaching the MCP tool instead, which
+        # answers a similar enough question that nothing looked wrong.
         resolved: "dict[str, pathlib.Path]" = {}
         for entry in declared:
             self.assertTrue(str(entry).startswith("./"),
                             f"{entry!r} must be relative to the plugin root and begin "
                             "'./', which is the only form the host resolves")
-            path = PLUGIN / str(entry)[2:]
-            self.assertTrue(path.is_file(),
-                            f"{entry} is declared and there is no file there")
-            resolved[path.stem] = path
+            where = PLUGIN / str(entry)[2:]
+            self.assertTrue(where.is_dir(),
+                            f"{entry} is declared and is not a directory; the host scans "
+                            "these paths for command files, so naming a file registers "
+                            "nothing and says nothing")
+            for path in where.glob("*.md"):
+                resolved[path.stem] = path
 
         self.assertEqual(sorted(resolved), sorted(_COMMAND_NAMES),
                          "these four commands are what this plugin is for; the manifest "

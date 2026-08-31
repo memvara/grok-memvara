@@ -3,10 +3,7 @@
   "description": "Bitemporal memory for agents: hosted MCP plus the skill that says how to use it.",
   "version": "0.2.2",
   "commands": [
-    "./commands/authenticate.md",
-    "./commands/login.md",
-    "./commands/logout.md",
-    "./commands/stats.md"
+    "./commands/"
   ],
   "author": {
     "name": "Memvara",
@@ -15,5 +12,10 @@
   "homepage": "https://memvara.dev/docs/agents",
   "repository": "https://github.com/memvara/grok-memvara",
   "license": "Apache-2.0",
-  "keywords": ["memory", "mcp", "agents", "grok"]
+  "keywords": [
+    "memory",
+    "mcp",
+    "agents",
+    "grok"
+  ]
 }
