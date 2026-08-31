@@ -6,7 +6,7 @@ disable-model-invocation: true
 Run this and show the user everything it prints:
 
 ```bash
-python3 "${SKILL_DIR}/../auth/memvara_auth.py" logout
+python3 "${SKILL_DIR}/../skills/memvara/scripts/memvara_auth.py" logout
 ```
 
 It deletes `~/.memvara/credentials.json` and nothing else. Every other place a key may

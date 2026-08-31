@@ -25,7 +25,10 @@ import urllib.request
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PLUGIN = ROOT / "plugin"
 SKILL = PLUGIN / "skills" / "memvara"
-AUTH = PLUGIN / "auth"
+#: The module lives INSIDE the skill, so `skill.lock` vendors it to every host
+#: through the sync that already exists. It sat at `plugin/auth/` as well for one
+#: commit -- two byte-identical copies with nothing saying which the commands ran.
+AUTH_SCRIPT = SKILL / "scripts" / "memvara_auth.py"
 HOSTED = "https://app.memvara.dev/mcp"
 REPO_NAME = "memvara/grok-memvara"
 
@@ -186,8 +189,13 @@ class SkillTree(unittest.TestCase):
                 f"library unreachable, drift NOT checked: {exc}") from exc
 
         self.assertTrue(upstream, "the library reported an empty skill tree")
-        ours = {str(path.relative_to(SKILL))
-                for path in SKILL.rglob("*") if path.is_file()}
+        # `__pycache__` is on neither side: git never lists it, and it appears only
+        # because this repository EXECUTES the vendored script -- deliberately, so a
+        # syntactically broken upstream cannot ship. It could not arise while the skill
+        # was markdown; it arrived when the module moved inside the skill. The five
+        # sibling repos that do not import the script deliberately carry no such filter.
+        ours = {str(path.relative_to(SKILL)) for path in SKILL.rglob("*")
+                if path.is_file() and "__pycache__" not in path.parts}
         self.assertEqual(
             ours, upstream,
             f"the vendored skill's file set differs from the library at {head[:7]} — "
@@ -373,8 +381,6 @@ class GrokManifest(unittest.TestCase):
         allowed = {
             pathlib.Path("plugin.json"),
             pathlib.Path(".mcp.json"),
-            pathlib.Path("auth") / "__init__.py",
-            pathlib.Path("auth") / "memvara_auth.py",
             pathlib.Path("commands") / "authenticate.md",
             pathlib.Path("commands") / "login.md",
             pathlib.Path("commands") / "logout.md",
@@ -580,13 +586,11 @@ class CredentialProbe(unittest.TestCase):
         shutil.rmtree(self._home, ignore_errors=True)
 
     def _auth(self):
-        sys.path.insert(0, str(PLUGIN))
-        try:
-            import importlib
+        import importlib.util
 
-            module = importlib.import_module("auth.memvara_auth")
-        finally:
-            sys.path.pop(0)
+        spec = importlib.util.spec_from_file_location("memvara_auth", AUTH_SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
         # The module holds a connection open across calls, so a fake one left in its cache
         # would be handed to the next test in this process. Dropped the moment this test
         # ends rather than at some later import.
@@ -830,7 +834,7 @@ class CredentialProbe(unittest.TestCase):
         # "urlopen" fails on a module that merely explains why it does not use urlopen,
         # which is the first thing this one does.
         imported = set()
-        for node in ast.walk(ast.parse((AUTH / "memvara_auth.py").read_text(
+        for node in ast.walk(ast.parse((AUTH_SCRIPT).read_text(
                 encoding="utf-8"))):
             if isinstance(node, ast.Import):
                 imported.update(alias.name for alias in node.names)
@@ -1019,13 +1023,11 @@ class DeviceFlow(unittest.TestCase):
         poll test wait the interval the server asks for, five seconds at a time; a real
         `webbrowser.open` would open a browser window on whoever ran the suite.
         """
-        sys.path.insert(0, str(PLUGIN))
-        try:
-            import importlib
+        import importlib.util
 
-            module = importlib.import_module("auth.memvara_auth")
-        finally:
-            sys.path.pop(0)
+        spec = importlib.util.spec_from_file_location("memvara_auth", AUTH_SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
         self.addCleanup(module.close)
 
         clock = {"now": 0.0}
@@ -1221,7 +1223,7 @@ class DeviceFlow(unittest.TestCase):
         with no imports in it at all, so the modules this flow actually needs are named
         and required to be present.
         """
-        tree = ast.parse((AUTH / "memvara_auth.py").read_text(encoding="utf-8"))
+        tree = ast.parse((AUTH_SCRIPT).read_text(encoding="utf-8"))
         imported: "set[str]" = set()
         guarded: "set[str]" = set()
 
@@ -1503,13 +1505,11 @@ class Commands(unittest.TestCase):
     def _auth(self):
         """The module, with its clock and its browser replaced -- see `DeviceFlow._auth`
         for why both replacements are safety rather than convenience."""
-        sys.path.insert(0, str(PLUGIN))
-        try:
-            import importlib
+        import importlib.util
 
-            module = importlib.import_module("auth.memvara_auth")
-        finally:
-            sys.path.pop(0)
+        spec = importlib.util.spec_from_file_location("memvara_auth", AUTH_SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
         self.addCleanup(module.close)
 
         clock = {"now": 0.0}
@@ -1698,9 +1698,27 @@ class Commands(unittest.TestCase):
                     suffix = quoted.split('"', 1)[0]
                     resolved = (_COMMANDS_DIR / suffix.lstrip("/")).resolve()
                     self.assertEqual(
-                        resolved, (AUTH / "memvara_auth.py").resolve(),
+                        resolved, (AUTH_SCRIPT).resolve(),
                         f"{name} resolves {placeholder}{suffix} to {resolved}, and the "
                         "module is not there")
+
+    def test_the_module_ships_exactly_once(self) -> None:
+        """One copy, and it is the one the library vendors.
+
+        For the length of one commit this plugin held both `plugin/auth/memvara_auth.py`
+        and `plugin/skills/memvara/scripts/memvara_auth.py`, byte for byte the same file,
+        with nothing saying which the commands ran or which a fix should edit. Two copies
+        that agree are fine right up until somebody edits one.
+
+        An exact set rather than a count, so the wrong single copy fails as loudly as two.
+        """
+        copies = sorted(str(path.relative_to(PLUGIN))
+                        for path in PLUGIN.rglob("memvara_auth.py")
+                        if "__pycache__" not in path.parts)
+        self.assertEqual(
+            copies, [str(AUTH_SCRIPT.relative_to(PLUGIN))],
+            "the auth module must ship once, inside the skill, where skill.lock vendors "
+            "it to every host through the sync that already exists")
 
     def test_no_host_config_is_written_without_confirmation(self) -> None:
         """This host's own OAuth client already writes `~/.claude.json`. A command that
@@ -1966,6 +1984,18 @@ class AuthReadme(unittest.TestCase):
             self.assertIn(f"/memvara:{name}", section,
                           f"the section never names /memvara:{name}, so one of the four "
                           "commands ships undocumented")
+        # The path, RESOLVED and required to be the module. It was edited by hand in the
+        # same commit that repointed the four command files, and nothing held it there.
+        # `is_file()` would not be enough: measured in claude-memvara, a path pointing at
+        # SKILL.md passed a guard spelled that way while the command would hand python3 a
+        # markdown file. Three sabotages missed it because each DELETED something, and a
+        # mis-repointed path is wrong-but-present rather than absent.
+        stated = "skills/memvara/scripts/memvara_auth.py"
+        self.assertIn(stated, section,
+                      "the section does not say which file the commands run")
+        self.assertEqual((PLUGIN / stated).resolve(), AUTH_SCRIPT.resolve(),
+                         f"the README says {stated}, which is not the auth module")
+
         self.assertIn("python3", section,
                       "the section does not say that python3 runs on this machine when a "
                       "command is invoked, which is the whole of what a reader is owed "
