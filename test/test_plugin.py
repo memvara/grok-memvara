@@ -281,6 +281,14 @@ class SharedInstructions(unittest.TestCase):
         self.assertIn("If this repo ships hooks", local)
 
 
+#: The heading the hook verdict is written under, and the issue holding its receipts.
+#: Named here rather than searched for by keyword for the same reason as `_AUTH_HEADING`:
+#: the guard reads only what sits beneath the heading, and a keyword scan of the whole
+#: page passes on words scattered through sections about something else.
+_HOOK_VERDICT_HEADING = "## What Memvara does not do on Grok"
+_HOOK_VERDICT_ISSUE = "https://github.com/memvara/grok-memvara/issues/26"
+
+
 class Hygiene(unittest.TestCase):
     def test_no_npx_in_json(self) -> None:
         """No JSON *this repo ships* may reach for npx.
@@ -302,24 +310,57 @@ class Hygiene(unittest.TestCase):
                 continue
             self.assertNotIn("npx", path.read_text(encoding="utf-8"), path)
 
-    def test_no_hooks(self) -> None:
-        """This also asserted `commands/` did not exist, and no longer can.
+    def test_this_host_states_why_it_ships_no_hooks(self) -> None:
+        """Replaces `test_no_hooks`, which asserted an absence and nothing else.
 
-        That assertion was right while the plugin was a manifest, an endpoint and a
-        vendored skill; shipping four commands a user can type is a different promise.
-        The half about `commands/` is REPLACED, not dropped, by two guards that are
-        strictly stronger than "the directory is absent": `test_plugin_tree` names every
-        file under it one by one, and
-        `Commands.test_every_command_this_plugin_declares_points_at_a_file_that_exists`
-        requires the manifest and the tree to agree on exactly four named commands, in
-        both directions. An emptied `commands/` fails both of those and would have
-        satisfied the assertion removed here.
+        Two halves, and only together are they a guard.
 
-        `hooks/` and `.app.json` stay absent, and stay asserted. This repository ships no
-        hooks -- `CLAUDE.md`'s hook rules are carried for the family, not used here.
+        The absence half is the same assertion as before: no `hooks/`, no `.app.json`.
+        On its own it is satisfied by a repository where somebody quietly deleted the
+        explanation, which is indistinguishable from one that never had a reason.
+
+        The explanation half is new and is the point. Grok was spiked on 1.0.13 on
+        2026-08-30 and the answer was measured, not assumed: a `UserPromptSubmit` hook's
+        `systemMessage` renders as a banner and its `additionalContext` is discarded, so
+        the plugin would report a recall on screen every turn while the model received
+        nothing. `hooks/` is absent here for that reason, and a reader who is looking at
+        the Grok banner right now -- sourced from the Claude Code plugin cache, not from
+        this repository -- needs the page to say so.
+
+        A host that fails must fail out loud, in the shipped artifact, forever.
+
+        The old `commands/` half of `test_no_hooks` is not repeated here; it was already
+        replaced by `test_plugin_tree` and
+        `Commands.test_every_command_this_plugin_declares_points_at_a_file_that_exists`.
         """
-        self.assertFalse((PLUGIN / "hooks").exists())
+        self.assertFalse((PLUGIN / "hooks").exists(),
+                         "this plugin now ships a hooks directory, so the README section "
+                         "asserted below has become false and the verdict in "
+                         f"{_HOOK_VERDICT_ISSUE} needs revisiting before it can ship")
         self.assertFalse((PLUGIN / ".app.json").exists())
+
+        text = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn(_HOOK_VERDICT_HEADING, text,
+                      f"the README has no {_HOOK_VERDICT_HEADING!r} section, so this "
+                      "plugin ships without memory on every turn and says nothing about "
+                      "why")
+        # Bounded to the section, like `AuthReadme._section`. Against the whole page each
+        # substring below is satisfied by a word somewhere else -- `memory_recall` is
+        # named in the skill discussion and `Grok` is in the install block.
+        section = text.split(_HOOK_VERDICT_HEADING, 1)[1].split("\n## ", 1)[0]
+
+        self.assertIn("UserPromptSubmit", section,
+                      "the section does not name the event that was measured, so a "
+                      "reader cannot tell which half of the hook surface was tested nor "
+                      "check the finding themselves")
+        self.assertIn("1.0.13", section,
+                      "the section does not say which Grok version this was measured on, "
+                      "so it cannot go stale and cannot be rechecked")
+        self.assertIn("2026-08-30", section,
+                      "the section does not say when this was measured")
+        self.assertIn(_HOOK_VERDICT_ISSUE, section,
+                      "the section does not link the issue holding the receipts, so the "
+                      "evidence for this decision exists nowhere a reader can reach")
 
     def test_github_org(self) -> None:
         env = os.environ.get("GITHUB_REPOSITORY")

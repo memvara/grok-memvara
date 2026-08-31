@@ -84,6 +84,27 @@ credential minted against the wrong project is not an error anyone ever sees.
 `stats` overlaps the `memory_stats` tool, and earns its place by answering when the MCP
 server is not authenticated. When it is connected, ask the tool.
 
+## What Memvara does not do on Grok
+
+There are no hooks in this plugin, and that is a measured decision rather than an
+unfinished one. Memory here is something the model asks for -- the skill says when to
+call `memory_recall` -- not something that arrives on its own at the start of a turn.
+
+On grok 1.0.13, measured 2026-08-30, a `UserPromptSubmit` hook's `systemMessage` renders
+as a banner while its `additionalContext` is discarded. The banner says a memory was
+recalled; the model never receives one. Across every Grok session recorded on the machine
+this was measured on, the recalled block appears only in the interface's own
+`updates.jsonl` -- and zero times in `chat_history.jsonl`, `prompt_context.json` or
+`system_prompt.txt`, the three files the model is actually handed.
+
+Shipping that would be worse than shipping nothing, because a banner reporting success
+every turn is visible evidence arguing against anyone investigating. The receipts, the
+control runs and the one condition that would reopen this are in
+[issue #26](https://github.com/memvara/grok-memvara/issues/26).
+
+If you also run Claude Code, its plugin does ship those hooks and Grok reaches them
+through the Claude plugin cache. The banner you are seeing is the one described above.
+
 ## License
 
 Apache-2.0.
