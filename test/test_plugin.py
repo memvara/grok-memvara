@@ -2091,5 +2091,33 @@ class AuthReadme(unittest.TestCase):
                       "arrives with nothing in the README to match it against")
 
 
+class ModuleShape(unittest.TestCase):
+    """Nothing may be defined below `unittest.main()`.
+
+    It happened twice in this family and neither run said so. A class appended after the
+    `__main__` block is collected by `unittest discover` and NOT by
+    `python3 test/test_plugin.py`, and both print OK -- 26 tests one way and 21 the other
+    in codex-memvara, 23 and 18 in vscode-memvara. CI uses discover, so it stays green.
+
+    This suite and claude-memvara's are the two largest, which is where a five-test
+    shortfall is hardest to notice, and appending to the end of a file is the natural way
+    to add a class. A passing run must not be able to mean "the check never ran".
+    """
+
+    def test_nothing_is_defined_after_the_main_block(self) -> None:
+        import ast
+
+        body = ast.parse(pathlib.Path(__file__).read_text(encoding="utf-8")).body
+        guards = [i for i, node in enumerate(body)
+                  if isinstance(node, ast.If) and "__main__" in ast.dump(node.test)]
+        self.assertEqual(len(guards), 1, "expected exactly one __main__ block")
+        after = [type(node).__name__ for node in body[guards[0] + 1:]]
+        self.assertEqual(
+            after, [],
+            f"{after} is defined after `unittest.main()`, so "
+            "`python3 test/test_plugin.py` runs without it and still prints OK")
+
+
 if __name__ == "__main__":
     unittest.main()
+
