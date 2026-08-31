@@ -14,6 +14,8 @@ concurrency:
 
 permissions:
   contents: read
+  # `test_the_issue_this_verdict_points_at_is_open` reads one issue through the API.
+  issues: read
 
 jobs:
   validate:
@@ -64,4 +66,12 @@ jobs:
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           MEMVARA_LIBRARY: ${{ github.workspace }}/_library
+          # Same hazard the drift check above was rescued from, and the same argument.
+          # `test_the_issue_this_verdict_points_at_is_open` asks the API whether the
+          # issue the README sends readers to is still open. Unauthenticated that is
+          # 60/hour against an IP this runner shares, so the check SKIPS on the runs
+          # that lose the draw -- and a guard that runs most of the time is one whose
+          # green cannot be read as "checked". The token raises the ceiling and the
+          # skip becomes what it should be: GitHub genuinely unreachable.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 -m unittest discover -s test -v
