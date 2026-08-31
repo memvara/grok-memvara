@@ -10,5 +10,6 @@
   "repository": "https://github.com/memvara/grok-memvara",
   "license": "Apache-2.0",
   "keywords": ["memory", "mcp", "agents", "grok"],
-  "skills": ["./plugin/skills/"]
+  "skills": ["./plugin/skills/"],
+  "commands": ["./plugin/commands/"]
 }
