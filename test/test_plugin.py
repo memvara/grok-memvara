@@ -337,7 +337,20 @@ class Hygiene(unittest.TestCase):
                          "this plugin now ships a hooks directory, so the README section "
                          "asserted below has become false and the verdict in "
                          f"{_HOOK_VERDICT_ISSUE} needs revisiting before it can ship")
-        self.assertFalse((PLUGIN / ".app.json").exists())
+        self.assertFalse((PLUGIN / ".app.json").exists(),
+                         "this plugin now ships a Grok app manifest")
+        # A directory is not the only way hooks arrive, and it is not the way a port
+        # would bring them. `plugin.json` already declares `commands` by key, and the
+        # rollout plan adds hooks to a host the same way -- a `hooks` key naming a file
+        # that may already be in the tree. Measured: adding one left the whole suite at
+        # `OK`, because `test_plugin_tree` sees no new file and the check above sees no
+        # new directory, while the plugin was declaring hooks to Grok and this README
+        # went on saying it shipped none.
+        for manifest in (ROOT / "plugin.json", PLUGIN / "plugin.json"):
+            self.assertNotIn(
+                "hooks", _json(manifest),
+                f"{manifest.relative_to(ROOT)} declares hooks, so this plugin ships them "
+                "however the tree looks, and the README section asserted below is false")
 
         text = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertIn(_HOOK_VERDICT_HEADING, text,
@@ -361,6 +374,50 @@ class Hygiene(unittest.TestCase):
         self.assertIn(_HOOK_VERDICT_ISSUE, section,
                       "the section does not link the issue holding the receipts, so the "
                       "evidence for this decision exists nowhere a reader can reach")
+
+    def test_the_issue_this_verdict_points_at_is_open(self) -> None:
+        """The half above compares the README against a copy of itself.
+
+        It requires a URL to be present and can say nothing about what is at the other
+        end of it. Close #26, delete it, or transfer this repository and have the numbers
+        remapped, and the README goes on telling a reader that the receipts and the one
+        condition that would reopen the decision are there -- with every test green,
+        because the string never moved. That is the shape `CLAUDE.md` names outright: a
+        claim and its guard frozen together, agreeing with each other while both are
+        wrong.
+
+        So this one asks GitHub, which is the referent. It SKIPS rather than passes when
+        the API cannot be reached or answers a rate limit, because a check that quietly
+        turns into a pass is the failure it is here to prevent -- and it prints the
+        reason, since a silent skip is how the drift check in this family stayed green
+        for four days while doing nothing.
+
+        It goes through `_trust()` for the reason that helper exists. Written with a bare
+        `urlopen` this skipped on every Mac with `CERTIFICATE_VERIFY_FAILED` against a
+        certificate `curl` was fetching with a 200 -- reporting GitHub unreachable while
+        GitHub was fine, which is precisely how this family's drift check spent four days
+        looking handled.
+        """
+        request = urllib.request.Request(
+            _HOOK_VERDICT_ISSUE.replace(
+                "https://github.com/", "https://api.github.com/repos/", 1),
+            headers={"User-Agent": "grok-memvara-tests",
+                     "Accept": "application/vnd.github+json"})
+        token = os.environ.get("GITHUB_TOKEN")
+        if token:
+            request.add_header("Authorization", f"Bearer {token}")
+        try:
+            with urllib.request.urlopen(
+                    request, timeout=30, context=_trust()) as response:
+                issue = json.loads(response.read())
+        except Exception as exc:                                # noqa: BLE001
+            raise unittest.SkipTest(
+                f"GitHub not reached, the verdict issue was NOT checked: {exc!r}")
+
+        self.assertEqual(issue.get("state"), "open",
+                         f"{_HOOK_VERDICT_ISSUE} is {issue.get('state')!r}, but the "
+                         "README sends readers there for a live verdict; either reopen "
+                         "it or rewrite the section around what replaced it")
 
     def test_github_org(self) -> None:
         env = os.environ.get("GITHUB_REPOSITORY")
@@ -417,7 +474,10 @@ class GrokManifest(unittest.TestCase):
         The auth module and the four commands are listed individually rather than by
         directory: a wildcard for `auth/` would let a second module, a cache or a stray
         script ship from this plugin without anything going red, and this is the guard
-        that replaced `test_no_hooks`'s assertion that `commands/` did not exist at all.
+        that replaced the assertion `test_no_hooks` used to make, that `commands/` did not
+        exist at all. That test is now
+        `Hygiene.test_this_host_states_why_it_ships_no_hooks`, which kept only the
+        `hooks/` half.
         """
         allowed = {
             pathlib.Path("plugin.json"),
