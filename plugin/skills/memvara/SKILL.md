@@ -93,6 +93,10 @@ Read before you assert. Anything you say about what is remembered — "you told
 me X", "I have nothing on file" — must come from a tool result **in the current
 turn**. If you have not looked, say so, then look.
 
+To open a session, one `memory_profile` call does the work of calling
+`memory_standing` and then `memory_since`. When the server does not list it,
+make those two calls instead.
+
 When they say a memory is wrong, do this order: `memory_recall`,
 `memory_search` (you need the claim id), `memory_why` (put the excerpt in front
 of them). The excerpt is the **evidence for** which write comes next, not their
@@ -120,6 +124,17 @@ long, and a stored sentence saying a defect is fixed is not the fix.
 
 Then say what you closed, in the same message as the work. A correction nobody
 is told about is one they cannot argue with.
+
+Leave the reason on the record too. Every closing write takes one, including a
+`memory_remember` that names the value it `replaces`, and the next session sees
+it beside the closed note. Write the evidence in one sentence ("the deploy log
+shows the gate installed at 14:02"), not the conversation that produced it.
+
+When a whole topic is over, or was wrong from the start, one query can close all
+of it, and the first call only shows you the list. Read every line before you
+confirm, because the match is loose. If one line should stay, do not confirm;
+close the others by id instead. When a note you store adds detail to one already
+there, link the two so the next `memory_why` shows how they fit.
 
 Call `memory_stats` once before you write. If the session field is not `*`, the
 server was launched with `MEMVARA_SESSION` set and the note will not carry over
@@ -161,6 +176,21 @@ user the steps and let them see where you got it; a conclusion with the middle
 removed is something they have to take on trust, and the middle is the part
 they can correct.
 
+**A document or a fact.** When they hand you something they want kept whole — a
+spec, a runbook, a README, notes from a meeting — store it as a document, so later
+questions get its own sentences back. When they tell you one thing about
+themselves or their work, write the fact. A document is not a way to avoid
+deciding: if a line inside it is something you will need as a fact next week,
+write that fact as well. Give the document a stable name of your own, such as its
+path, so a newer version sent later replaces the old one instead of sitting
+beside it.
+
+Deleting a document is different from every other removal here. Its text is
+erased and cannot be brought back. The notes that came only from it are retired,
+not erased, so the record of what was believed stays. Before you delete, say which
+of those two they are getting, and when they only want a newer version, send the
+document again rather than deleting it.
+
 ## Other jobs
 
 | They asked | Open |
@@ -177,6 +207,6 @@ lookup and nothing about the two people. Report it as such. "I have no record
 tying them together" is true; "they have no connection" is a claim about the
 world that no memory tool can support.
 
-`memory_forget` is not erasure. Real deletion is an operator action on the
-console or REST, and is deliberately not a tool. Never say you deleted data if
-you only retired a claim.
+`memory_forget` is not erasure. Erasing a memory is an operator action on the
+console or REST, and is deliberately not a tool; the only text a tool erases is
+a stored document's own. Never say you deleted data if you only retired a claim.
