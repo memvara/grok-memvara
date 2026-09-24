@@ -11,6 +11,12 @@ permissions:
 jobs:
   ci:
     uses: ./.github/workflows/ci.yml
+    # A called workflow can use only the permissions its caller grants. ci.yml asks for
+    # `issues: read`, because one test reads an issue through the API. Without this
+    # block the call is refused before any job starts, and no release is published.
+    permissions:
+      contents: read
+      issues: read
 
   release:
     needs: ci
