@@ -529,7 +529,7 @@ class Version(unittest.TestCase):
     stopped guarding.
     """
 
-    VERSION = "0.3.0"
+    VERSION = "0.3.1"
     DECLARED = {
         '.grok-plugin/marketplace.json',
         'plugin.json',
