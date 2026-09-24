@@ -12,7 +12,8 @@ Pin the install to this marketplace. The plugin name `memvara` is also used by
 `memvara/claude-memvara`; without the qualifier Grok refuses to guess.
 
 The first connection opens a browser so you can click Allow. That grant
-lasts 90 days, and the MCP server itself carries no API key.
+lasts until you revoke it, or ten years, whichever comes first, and the MCP
+server itself carries no API key.
 
 The four commands below are the other way to a credential, and they do run
 `python3` on this machine. Nothing else here does.
@@ -24,7 +25,8 @@ A loop you wrote is `pip install memvara`.
 
 ## Four commands for the credential itself
 
-The grant at the top of this page is the host's, and it lasts 90 days. These four
+The grant at the top of this page is the host's, and it lasts until you revoke it or
+for ten years. These four
 commands get a key of your own instead, one the deployment reports no expiry for,
 and say which credential this machine is actually using. They answer while the MCP
 server is unauthenticated, which is when the question is worth asking.
